@@ -1,0 +1,3 @@
+[submodule ".\\vllm-windows\\"]
+	path = .\\vllm-windows\\
+	url = https://github.com/aisu-programming/vllm-windows.git

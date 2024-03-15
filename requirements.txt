@@ -1,0 +1,38 @@
+########## Common ##########
+python-dotenv
+discord
+transformers
+openai
+### Manually install Pytorch: https://pytorch.org/get-started/locally/
+# pip install torch --index-url https://download.pytorch.org/whl/cu118
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+
+
+########## For libs/hf.py ##########
+### Manually install bitsandbytes: https://github.com/jllllll/bitsandbytes-windows-webui
+# pip install bitsandbytes --prefer-binary --extra-index-url=https://jllllll.github.io/bitsandbytes-windows-webui
+accelerate  # accelerate is necessary for bitsandbytes
+
+
+
+########## For libs/lc.py ##########
+langchain-community
+# langchain-core
+# langchain-experimental
+# langchain-experimental
+# "langserve[all]"
+# langchain-cli
+# langsmith
+# tiktoken
+
+
+
+########## AutoGen ##########
+# pyautogen
+# docker
+
+
+
+########## For FastChat ##########
+# fschat[model_worker,webui]
