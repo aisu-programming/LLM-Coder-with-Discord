@@ -33,5 +33,5 @@ If you are not using Hugging Face but vLLM server:
 ## Execution
 
 ```
-python ./discord_bot.py
+python ./main.py
 ```
