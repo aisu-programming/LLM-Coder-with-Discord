@@ -1,0 +1,23 @@
+version: "3"
+services:
+    vllm-openai:
+        env_file: .env
+        deploy:
+            resources:
+                reservations:
+                    devices:
+                        - driver: nvidia
+                          count: all
+                          capabilities:
+                              - gpu
+        volumes:
+            - ${HF_HOME}:/root/.cache/huggingface
+        environment:
+            - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN}
+        ports:
+            - ${VLLM_PORT}:8000
+        ipc: host
+        image: vllm/vllm-openai:latest
+        # command: --model ${MODEL_NAME} --load-format ${LOAD_FORMAT} --max-model-len ${MAX_MODEL_LEN}  # --quantization {}
+        command: --model ${MODEL_NAME} --load-format ${LOAD_FORMAT} --max-model-len ${MAX_MODEL_LEN} --quantization gptq --kv-cache-dtype fp8_e5m2
+        # command: --help

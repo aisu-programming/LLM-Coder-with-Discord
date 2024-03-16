@@ -1,10 +1,7 @@
 ##### Libraries #####
-import dotenv
-dotenv.load_dotenv(".env")
 import os
 import logging
 from typing import List
-from libs.base import BaseModel
 from transformers import AutoTokenizer
 from langchain_community.llms.vllm import VLLMOpenAI
 
@@ -25,7 +22,34 @@ LC_LOGGER.addHandler(LC_HANDLER)
 
 
 ##### Classes #####
-class VllmDockerModel(BaseModel):
+class LcVllmDockerBaseModel(object):
+    def __init__(self) -> None:
+        self.stopping_sign = "User:"
+        # self.SOU = "<|StartOfUser|>"  # Start Of User
+        # self.EOU = "<|EndOfUser|>"    # End Of User
+        # self.SOY = "<|StartOfYou|>"   # Start Of You
+        # self.EOY = "<|EndOfYou|>"     # End Of You
+    
+    def apply_template(self, message):
+        return f"User: {message}\nYou: "
+    
+    def __call__(self, message: str) -> str:
+        # BM_LOGGER.info(f"message: {message}")
+        msg_tpl = self.apply_template(message)
+        # BM_LOGGER.info(f"msg_tpl:\n\n{msg_tpl}")
+        response = self.generate_response(msg_tpl)
+        # BM_LOGGER.info(f"Generated response:\n\n{response}")
+        response = response.removeprefix(msg_tpl).removesuffix(self.stopping_sign)
+        response = response.strip()
+        # BM_LOGGER.info(f"Proccessed response:\n\n{response}")
+        return response
+
+    def generate_response(self, message: str) -> str:
+        raise NotImplementedError
+
+
+
+class VllmDockerModel(LcVllmDockerBaseModel):
     def __init__(self, model_name: str, max_tokens: int, port: int) -> None:
         super().__init__()
                 

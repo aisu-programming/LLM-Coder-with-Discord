@@ -12,9 +12,10 @@ import logging
 import functools
 import subprocess
 from libs import (
-    BaseModel,
+    HfBaseModel,
     Zephyr7bBeta,
-    DeepseekCoder33bInstruct,
+    Qwen,
+    DeepseekCoderInstruct,
     VllmDockerModel,
 )
 from typing import Union, List
@@ -113,7 +114,7 @@ async def start_docker(
     else:
         await log_and_send(channel, "Starting the docker... This takes about 6 minutes.")
         await channel.send("**[SYSTEM]** *I will notice you when the docker is successfully started.*")
-        subprocess.check_call(args=[ "docker-compose", "-f", "./vllm-windows/docker-compose.yml", "start" ])
+        subprocess.check_call(args=[ "docker-compose", "-f", "docker-compose.yml", "start" ])
         await report_server_started(model)
         await log_and_send(channel, "The docker has successfully started!")
 
@@ -126,7 +127,7 @@ async def restart_docker(
     if check_server_is_started(model):
         await log_and_send(channel, "Restarting the docker... This takes about 6 minutes.")
         await channel.send("**[SYSTEM]** *I will notice you when the docker is successfully restarted.*")
-        subprocess.check_call(args=[ "docker-compose", "-f", "./vllm-windows/docker-compose.yml", "restart" ])
+        subprocess.check_call(args=[ "docker-compose", "-f", "docker-compose.yml", "restart" ])
         await report_server_started(model, channel)
         await log_and_send(channel, "The docker has successfully restarted!")
     else:
@@ -139,7 +140,7 @@ async def force_restart_docker(
     ) -> None:
     await log_and_send(channel, "Force restarting the docker... This takes about 6 minutes.\n" + \
                                         "I will notice you when the docker is successfully restarted.")
-    subprocess.check_call(args=[ "docker-compose", "-f", "./vllm-windows/docker-compose.yml", "restart" ])
+    subprocess.check_call(args=[ "docker-compose", "-f", "docker-compose.yml", "restart" ])
     await report_server_started(model, channel)
     await log_and_send(channel, "The docker has successfully restarted!")
 
@@ -149,7 +150,7 @@ async def stop_docker(
         channel: MessageableChannel
     ) -> None:
     await log_and_send(channel, "Stopping the docker...")
-    subprocess.check_call(args=[ "docker-compose", "-f", "./vllm-windows/docker-compose.yml", "stop" ])
+    subprocess.check_call(args=[ "docker-compose", "-f", "docker-compose.yml", "stop" ])
     await log_and_send(channel, "The docker has successfully stopped!")
 
 
@@ -168,7 +169,7 @@ def split_response(response: str) -> List[str]:
 class DiscordBot(discord.Client):
     def __init__(
             self,
-            model: BaseModel | VllmDockerModel,
+            model: HfBaseModel | VllmDockerModel,
             intents: discord.Intents,
             **options: dotenv.Any
         ) -> None:
@@ -182,8 +183,9 @@ class DiscordBot(discord.Client):
         # Prevent the bot from replying its own message
         if dc_msg.author.id != int(os.getenv("USER_ID")): return
         MAIN_LOGGER.debug(f"dc_msg: {dc_msg}")
-        MAIN_LOGGER.info(f"Received message: \"{dc_msg.content}\" from \"{dc_msg.author.name}\".")
         message = dc_msg.content
+        message_pruned = message[:10] + "..." if len(message) > 10 else message
+        MAIN_LOGGER.info(f"Received message: \"{message_pruned}\" from \"{dc_msg.author.name}\".")
 
         if type(self.model) is VllmDockerModel:
             if message == "!Start":
@@ -202,6 +204,8 @@ class DiscordBot(discord.Client):
         response = self.model(dc_msg.content)
         MAIN_LOGGER.debug(f"Generated response: \"{response}\".")
         msg = await dc_msg.channel.send(response)
+        response_pruned = response[:10] + "..." if len(response) > 10 else response
+        MAIN_LOGGER.info(f"Replied: \"{response_pruned}\".")
         # response_slices = split_response(response)
         # for rid, response in enumerate(response_slices):
         #     response = response.strip()
@@ -228,8 +232,9 @@ class DiscordBot(discord.Client):
 
 
 def main():
-    model: BaseModel = DeepseekCoder33bInstruct()
-    # model: VllmModel = VllmModel(MODEL_NAME, MAX_MODEL_LEN, VLLM_PORT)
+    # model: HfBaseModel = Qwen()
+    print(MODEL_NAME)
+    model: VllmDockerModel = VllmDockerModel(MODEL_NAME, MAX_MODEL_LEN, VLLM_PORT)
     intents = discord.Intents.default()
     # intents.messages = True
     # intents.reactions = True

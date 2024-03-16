@@ -13,6 +13,8 @@ openai
 ### Manually install bitsandbytes: https://github.com/jllllll/bitsandbytes-windows-webui
 # pip install bitsandbytes --prefer-binary --extra-index-url=https://jllllll.github.io/bitsandbytes-windows-webui
 accelerate  # accelerate is necessary for bitsandbytes
+optimum
+auto-gptq
 
 
 
