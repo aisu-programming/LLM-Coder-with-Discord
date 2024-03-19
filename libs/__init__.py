@@ -1,2 +1,3 @@
-from .hf import HfBaseModel, Zephyr7bBeta, Qwen, DeepseekCoderInstruct
-from .lc import VllmDockerModel
+from .hf import HfBaseModel, HfZephyr7bBeta, HfQwen, HfDeepseekCoderInstruct
+from .lc import VllmDockerLcModel
+from .qwen import VllmDockerQwenAgent

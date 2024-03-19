@@ -22,7 +22,7 @@ LC_LOGGER.addHandler(LC_HANDLER)
 
 
 ##### Classes #####
-class LcVllmDockerBaseModel(object):
+class VllmDockerLcBaseModel(object):
     def __init__(self) -> None:
         self.stopping_sign = "User:"
         # self.SOU = "<|StartOfUser|>"  # Start Of User
@@ -49,10 +49,10 @@ class LcVllmDockerBaseModel(object):
 
 
 
-class VllmDockerModel(LcVllmDockerBaseModel):
+class VllmDockerLcModel(VllmDockerLcBaseModel):
     def __init__(self, model_name: str, max_tokens: int, port: int) -> None:
         super().__init__()
-                
+        
         class MyVLLMOpenAI(VLLMOpenAI):
 
             @property

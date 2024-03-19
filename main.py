@@ -13,12 +13,13 @@ import functools
 import subprocess
 from libs import (
     HfBaseModel,
-    Zephyr7bBeta,
-    Qwen,
-    DeepseekCoderInstruct,
-    VllmDockerModel,
+    HfZephyr7bBeta,
+    HfQwen,
+    HfDeepseekCoderInstruct,
+    VllmDockerLcModel,
+    VllmDockerQwenAgent,
 )
-from typing import Union, List
+from typing import Union, List, Dict
 from discord.channel import (
     TextChannel,
     DMChannel,
@@ -30,7 +31,7 @@ from discord.channel import (
 from discord.threads import Thread
 MessageableChannel = Union[TextChannel, VoiceChannel, StageChannel, Thread,
                            DMChannel, PartialMessageable, GroupChannel]
-
+VllmDockerModel    = Union[VllmDockerLcModel, VllmDockerQwenAgent]
 
 
 
@@ -162,6 +163,24 @@ def split_response(response: str) -> List[str]:
     return response_slices
 
 
+def process_qwen_response_list(response_list: List[Dict]) -> List[Dict]:
+    adjusted_response_list = []
+    for response in response_list:
+        if response.get("content"):
+            content: str = response.get("content")
+            content = content.replace("stdout:", '').strip()
+            if response["role"] == "assistant":
+                role = "Bot"
+            elif response["role"] == "function":
+                function_name: str = response["name"]
+                function_name_split = function_name.split('_')
+                role = ' '.join([ n.capitalize() for n in function_name_split ])
+            else:
+                role = response["role"]
+            adjusted_response_list.append((role, content))
+    return adjusted_response_list
+
+
 
 
 
@@ -184,7 +203,7 @@ class DiscordBot(discord.Client):
         if dc_msg.author.id != int(os.getenv("USER_ID")): return
         MAIN_LOGGER.debug(f"dc_msg: {dc_msg}")
         message = dc_msg.content
-        message_pruned = message[:10] + "..." if len(message) > 10 else message
+        message_pruned = message[:20] + "..." if len(message) > 20 else message
         MAIN_LOGGER.info(f"Received message: \"{message_pruned}\" from \"{dc_msg.author.name}\".")
 
         if type(self.model) is VllmDockerModel:
@@ -201,45 +220,20 @@ class DiscordBot(discord.Client):
                 await stop_docker(self.model, dc_msg.channel)
                 return
 
-        response = self.model(dc_msg.content)
-        MAIN_LOGGER.debug(f"Generated response: \"{response}\".")
-        msg = await dc_msg.channel.send(response)
-        response_pruned = response[:10] + "..." if len(response) > 10 else response
-        MAIN_LOGGER.info(f"Replied: \"{response_pruned}\".")
-        # response_slices = split_response(response)
-        # for rid, response in enumerate(response_slices):
-        #     response = response.strip()
-        #     if response != '':
-        #         msg = await dc_msg.channel.send(response)
-        #         MAIN_LOGGER.info(f"Replied ({rid+1}/{len(response_slices)}): \"{response}\".")
-        #         time.sleep(3)
-        #         # await msg.add_reaction("👍")
-        #         # await msg.add_reaction("👎")
-
-    # async def on_reaction_add(
-    #     self,
-    #     reaction: discord.reaction.Reaction,
-    #     user: discord.user.User,
-    # ) -> None:
-    #     # Check the reaction to see what the user responded with
-    #     print(reaction, user, self.user)
-    #     if user != self.user:
-    #         if reaction.emoji == "👍":
-    #             print("Get")
-    #             await reaction.message.channel.send(f"{user.name} liked this message!")
-    #         elif reaction.emoji == "👎":
-    #             await reaction.message.channel.send(f"{user.name} did not like this message!")
-
-
-def main():
-    # model: HfBaseModel = Qwen()
-    print(MODEL_NAME)
-    model: VllmDockerModel = VllmDockerModel(MODEL_NAME, MAX_MODEL_LEN, VLLM_PORT)
-    intents = discord.Intents.default()
-    # intents.messages = True
-    # intents.reactions = True
-    bot = DiscordBot(model=model, intents=intents)
-    bot.run(DISCORD_TOKEN)
+        if type(self.model) is not VllmDockerQwenAgent:
+            response = self.model(dc_msg.content)
+            MAIN_LOGGER.debug(f"Generated response: \"{response}\".")
+            msg = await dc_msg.channel.send(response)
+            response_pruned = response[:20] + "..." if len(response) > 20 else response
+            MAIN_LOGGER.info(f"Replied: \"{response_pruned}\".")
+        else:
+            response_list = self.model(dc_msg.content)
+            response_list = process_qwen_response_list(response_list)
+            for role, content in response_list:
+                msg = await dc_msg.channel.send(f"# {role}:\n{content}")
+                content_pruned = content[:20] + "..." if len(content) > 20 else content
+                MAIN_LOGGER.info(f"Replied: \"{content_pruned}\".")
+                time.sleep(1)
 
 
 
@@ -247,4 +241,7 @@ def main():
 
 ##### Execution #####
 if __name__ == "__main__":
-    main()
+    # model: VllmDockerLcModel = VllmDockerLcModel(MODEL_NAME, MAX_MODEL_LEN, VLLM_PORT)
+    model: VllmDockerQwenAgent = VllmDockerQwenAgent(MODEL_NAME, VLLM_PORT)
+    bot = DiscordBot(model=model, intents=discord.Intents.default())
+    bot.run(DISCORD_TOKEN)

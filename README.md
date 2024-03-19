@@ -1,6 +1,10 @@
 # LLM-Coder-with-Discord
 
-A discord bot which can call LLMs using either Hugging Face or vLLM on Windows platform.
+A discord bot which can call LLMs using either Hugging Face or vLLM on Windows platform. <br>
+Current using model:
+- Qwen1.5-14B-Chat-GPTQ-Int8 (w/ context windows length: 4096)
+- Qwen1.5-14B-Chat-GPTQ-Int4
+- Qwen1.5-7B-Chat-GPTQ-Int8
 
 ## Environment
 
@@ -36,10 +40,14 @@ If you are not using Hugging Face pipelines/models but the vLLM server:
 
 - For other platform:
   
-  For the setup command, see "_docker-compose.yml_" for your reference.
+  See "_docker-compose.yml_" for your reference.
 
 ## Execution
 
 ```
 python ./main.py
 ```
+
+## Now-implemented Tools
+- My Web Extractor
+- File Operator (My Storage)

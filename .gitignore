@@ -4,4 +4,7 @@ venv*
 
 .env
 
+workspace
+projects
+
 autogen

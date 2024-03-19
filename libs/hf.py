@@ -29,7 +29,7 @@ class HfBaseModel(object):
 
 
 
-class Zephyr7bBeta(HfBaseModel):
+class HfZephyr7bBeta(HfBaseModel):
     def __init__(
             self,
             device: str = "cuda:0" if torch.cuda.is_available() else "cpu",
@@ -85,7 +85,7 @@ class Zephyr7bBeta(HfBaseModel):
 
 
 
-class Qwen(HfBaseModel):
+class HfQwen(HfBaseModel):
     def __init__(
             self,
             param_num: float = 14,
@@ -149,7 +149,7 @@ Given message: {current_msg}"""
 
 
 
-class DeepseekCoderInstruct(HfBaseModel):
+class HfDeepseekCoderInstruct(HfBaseModel):
     def __init__(
             self,
             param_num: float = 6.7,
