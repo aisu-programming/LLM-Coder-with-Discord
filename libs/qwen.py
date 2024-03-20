@@ -1,12 +1,34 @@
 ##### Libraries #####
 import os
 import json5
+import logging
 import requests
+import subprocess
 from bs4 import BeautifulSoup
 from typing import Union, Optional, Dict, List
 from qwen_agent.agents import Assistant
 from qwen_agent.utils.utils import extract_code
+from qwen_agent.llm.base import ModelServiceError
 from qwen_agent.tools.base import BaseTool, register_tool
+
+
+
+
+
+##### Parameters #####
+LOG_LEVEL: int = logging.INFO
+
+
+
+
+
+##### Loggers #####
+LOGGER = logging.getLogger("Qwen")
+LOGGER.setLevel(LOG_LEVEL)
+HANDLER = logging.StreamHandler()
+HANDLER.setLevel(LOG_LEVEL)
+HANDLER.setFormatter(logging.Formatter('\n'+os.environ["LOG_FMT"], datefmt=os.environ["LOG_DATE_FMT"]))
+LOGGER.addHandler(HANDLER)
 
 
 
@@ -44,35 +66,44 @@ class MyWebExtractor(BaseTool):
 
 
 
-@register_tool("file_operator")
-class FileOperator(BaseTool):
+@register_tool("project_manager")
+class ProjectManager(BaseTool):
     description = "A tool can either do operations on codes/docs, or scan the workspaces/directories."
     parameters = [{
         "name": "operate",
         "type": "string",
         "description": "Operation type. " + \
-                       "Option includes: ['save', 'read', 'update', 'delete', 'walk'] " + \
-                       "for saving/reading/updating/deleting codes/docs, " + \
-                       "or walking through the workspaces/directories.",
+                       "Option includes: ['create', 'install', 'save', 'read', 'update', 'delete', 'walk'] " + \
+                       "for creating a new project, installing packages, " + \
+                       "saving/reading/updating/deleting codes/docs, " + \
+                       "or walking through projects.",
         "required": True
     }, {
         "name": "project name",
         "type": "string",
         "description": "The name of the current doing project" + \
-                       "Required when saving/reading/updating/deleting the codes/docs." + \
-                       "Optional when walking through the workspaces/directories." + \
-                       "Cannot be empty.",
+                       "Required when creating a new project " + \
+                       "or saving/reading/updating/deleting the codes/docs." + \
+                       "Optional when walking through projects." + \
+                       "Cannot be empty string.",
+    }, {
+        "name": "install command",
+        "type": "string",
+        "description": "The command line to pip install packages, it's okay to be complicated." + \
+                       "E.g. 'pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118'." + \
+                       "Only required when installing packages."
     }, {
         "name": "filename",
         "type": "string",
         "description": "The name of the file to save, read, update, or delete." + \
                        "Required when saving/reading/updating/deleting the codes/docs." + \
-                       "Cannot be empty.",
+                       "Cannot be empty string.",
     }, {
         "name": "content",
         "type": "string",
-        "description": "Content of the codes or docs. " + \
-                       "Required when saving/updating the codes/docs."
+        "description": "Complete content of the runnable program/code or document. " + \
+                       "Required when saving/updating the programs/documents." + \
+                       "Should not be empty string.",
     }]
 
     def __init__(self, cfg: Optional[Dict] = None):
@@ -95,26 +126,34 @@ class FileOperator(BaseTool):
             params["content"] = content
 
         operate = params["operate"]
-        assert operate in ["save", "read", "update", "delete", "walk"], \
+        assert operate in ["create", "install", "save", "read", "update", "delete", "walk"], \
             "Parameter 'operate' invalid."
         
-        if operate in ["save", "read", "update", "delete"]:
+        if operate == "create":
+            assert "project name" in params, "Parameter 'project name' is necessary."
+            return self.create(os.path.join(self.root, params["project name"]))
+        
+        elif operate == "install":
+            assert "project name"    in params, "Parameter 'project name' is necessary."
+            assert "install command" in params, "Parameter 'install command' is necessary."
+            return self.install(os.path.join(self.root, params["project name"]), params["install command"])
+        
+        elif operate in ["save", "read", "update", "delete"]:
 
-            assert "project name" in params, "Parameter 'project name' missing."
-            assert "filename"     in params, "Parameter 'filename' missing."
+            assert "project name" in params, "Parameter 'project name' is necessary."
+            assert "filename"     in params, "Parameter 'filename' is necessary."
         
             project_path = os.path.join(self.root, params["project name"])
-            os.makedirs(project_path, exist_ok=True)
             if project_path.startswith('/'): project_path = project_path[1:]
             file_path = os.path.join(project_path, params["filename"])
 
             if operate == "save":
-                assert "content" in params, "Parameter content missing."
+                assert "content" in params, "Parameter 'content' is necessary."
                 return self.save(file_path, params["content"])
             elif operate == "read":
                 return self.read(file_path)
             elif operate == "update":
-                assert "content" in params, "Parameter content missing."
+                assert "content" in params, "Parameter 'content' is necessary."
                 # Temp
                 return self.save(file_path, params["content"])
                 return self.update(file_path, params["content"])
@@ -125,6 +164,38 @@ class FileOperator(BaseTool):
             path = os.path.join(self.root, params["project name"]) \
                 if "project name" in params else self.root
             return self.walk(path)
+    
+    def create(self, project_path: str) -> str:
+        os.makedirs(project_path, exist_ok=True)
+        command = ["python", "-m", "venv", "venv4W"]
+        completed_process = subprocess.run(command, text=True,
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE,
+                                            cwd=project_path)
+        if completed_process.returncode != 0:
+            return completed_process.stderr
+        if os.path.exists(f"{project_path}/requirements.txt"):
+            command = ["cmd.exe", "/c", "venv4W\\bin\\activate", "&&",
+                       "pip", "install", "-r", "requirements.txt"]
+            completed_process = subprocess.run(command, text=True,
+                                                stdout=subprocess.PIPE,
+                                                stderr=subprocess.PIPE,
+                                                cwd=project_path)
+        if completed_process.returncode != 0:
+            return completed_process.stderr
+        else:
+            return "SUCCESS"
+        
+    def install(self, project_path: str, command: str) -> str:
+        command = ["cmd.exe", "/c", "venv4W\\Scripts\\activate", "&&"] + command.split(' ')
+        completed_process = subprocess.run(command, text=True,
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE,
+                                            cwd=project_path)
+        if completed_process.returncode != 0:
+            return completed_process.stderr
+        else:
+            return "SUCCESS"
 
     def save(self, file_path: str, value: str) -> str:
         with open(file_path, 'w', encoding="utf-8") as file:
@@ -142,8 +213,50 @@ class FileOperator(BaseTool):
 
     def walk(self, path: str) -> str:
         dir_info = list(os.walk(path))
-        dir_info = list(filter(lambda _, dn, fn: len(dn) < 10 and len(fn) < 10, dir_info))
+        # Temp logic
+        dir_info = list(filter(lambda t: "venv" not in t[0] and len(t[1]) < 10 and len(t[2]) < 10, dir_info))
+        print(dir_info)
         return str(dir_info)
+
+
+
+@register_tool("my_code_executor")
+class MyCodeExecutor(BaseTool):
+    description = "A tool to execute existing Python codes file with virtual environment and get the result." + \
+                  "Unlike the original 'code_interpreter', this tool doesn't require inputting codes."
+    parameters = [{
+        "name": "project name",
+        "type": "string",
+        "description": "The name of the current doing project.",
+        "required": True
+    }, {
+        "name": "filename",
+        "type": "string",
+        "description": "The name of the file contains Python code to execute.",
+        "required": True
+    }]
+
+    def __init__(self, cfg: Optional[Dict] = None):
+        super().__init__(cfg)
+        self.root = "projects"
+
+    def call(self, params: Union[str, dict], timeout: Optional[int] = 30, **kwargs) -> str:
+        params = json5.loads(params)
+        assert "project name" in params, "Parameter 'project name' is necessary."
+        assert "filename"     in params, "Parameter 'filename' is necessary."
+        project_name, filename = params["project name"], params["filename"]
+
+        command = ["cmd.exe", "/c", "venv4W\\Scripts\\activate", "&&", "python", filename ]
+        completed_process = subprocess.run(command, text=True,
+                                            stdout=subprocess.PIPE,
+                                            stderr=subprocess.PIPE,
+                                            cwd=os.path.join(self.root, project_name))
+        
+        if completed_process.returncode != 0:
+            return completed_process.stderr
+        else:
+            result = completed_process.stdout
+            return result if result.strip() else "Finished execution."
 
 
 
@@ -155,33 +268,67 @@ class VllmDockerQwenAgent(Assistant):
             "api_key": "EMPTY",
             "generate_cfg": { "top_p": 0.9 }
         }
-        tools = ["code_interpreter", "my_web_extractor", "file_operator"]
+        tools = ["my_code_executor", "my_web_extractor", "project_manager"]
         super().__init__(
             llm=llm_cfg,
             function_list=tools,
             # system_message=system,
             # files=[ os.path.abspath("doc.pdf") ],
         )
-        self.history_messages = [{
-            "role": "system",
-            "content": "When generating code, " + \
-                       "use '#' to write comment. " + \
-                       "Do not use triple quotes (\"\"\") to write comment."
-        }]
+        # self.history_messages = [{
+        #     "role": "system",
+        #     "content": "When generating code, " + \
+        #                "use '#' to write comment. " + \
+        #                "Do not use triple quotes (\"\"\") to write comment."
+        # }]
+        self.history_messages = []
         
     def __call__(self, msg: str) -> List[Dict]:
         self.history_messages.append({ "role": "user", "content": msg })
-        for response_list in self.run(messages=self.history_messages):
-            pass
+        if sum(len(m["content"]) for m in self.history_messages) > 5000:
+            self.remove_long_message()
+        while True:
+            try:
+                for response_list in self.run(messages=self.history_messages):
+                    pass
+                break
+            except ModelServiceError as ex:
+                print(type(ex), ex)
+                print(type(ex.message), ex.message)
+                if "max_tokens must be at least 1" in ex.message:
+                    if self.remove_long_message():
+                        LOGGER.info("The length of history messages is too long. Removed some messages.")
+                    else:
+                        raise Exception("Special case?: ", ex)
+                else:
+                    raise ex
+
         for response in response_list:
+
+            print('\n', type(response), response, '\n')
+
             if response.get("name", '') == "my_web_extractor":
-                response["content"] = "Deleted for saving memory."
-        # response = list(filter(lambda r: r.get("name", '') != "my_web_extractor", response))
-        print("bot response:", response_list)
-        self.history_messages.extend(response_list)
+                response["content"] = "Deleted for saving memory. Extract again if needed."
+            if response.get("name", '') == "project_manager":
+                response["content"] = f"```python\n{response['content']}```"
+                # if len(response["content"]) > 100:
+                #     response["content"] = "Deleted for saving memory."
+            self.history_messages.append(response)
         return response_list
     
 
+    # Temp logic
+    def remove_long_message(self) -> None:
+        for msg_id in range(len(self.history_messages)):
+            if msg_id <= 1: pass
+            if self.history_messages[msg_id]["role"] != "user" and \
+               len(self.history_messages[msg_id]["content"]) > 500:
+                self.history_messages[msg_id]["content"] = "Deleted for saving memory."
+                return
+        for _ in range(5): self.history_messages.pop(2)
+        self.history_messages.insert(
+            2, { "role": "system", "content": "5 messages are deleted for saving memory." })
+        return
 
 
 

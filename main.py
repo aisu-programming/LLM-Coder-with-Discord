@@ -4,6 +4,8 @@ dotenv.load_dotenv(".env")
 import os
 os.environ["HF_HOME"] = os.getenv("HF_HOME")
 import time
+import json
+import json5
 import openai
 import typing
 import asyncio
@@ -11,6 +13,9 @@ import discord
 import logging
 import functools
 import subprocess
+from discord.threads import Thread
+from typing import Union, List, Dict
+from qwen_agent.utils.utils import extract_code
 from libs import (
     HfBaseModel,
     HfZephyr7bBeta,
@@ -19,7 +24,6 @@ from libs import (
     VllmDockerLcModel,
     VllmDockerQwenAgent,
 )
-from typing import Union, List, Dict
 from discord.channel import (
     TextChannel,
     DMChannel,
@@ -28,7 +32,6 @@ from discord.channel import (
     VoiceChannel,
     StageChannel,
 )
-from discord.threads import Thread
 MessageableChannel = Union[TextChannel, VoiceChannel, StageChannel, Thread,
                            DMChannel, PartialMessageable, GroupChannel]
 VllmDockerModel    = Union[VllmDockerLcModel, VllmDockerQwenAgent]
@@ -155,20 +158,32 @@ async def stop_docker(
     await log_and_send(channel, "The docker has successfully stopped!")
 
 
-def split_response(response: str) -> List[str]:
-    if len(response) <= 2000: return [ response ]
-    response_slices = response.split('.')  # 暫時用的邏輯
-    MAIN_LOGGER.debug(f"Response was splitted into {len(response_slices)} slices.")
-    response_slices
-    return response_slices
+def split_message(message: str) -> List[str]:
+    if len(message) <= 1900: return [ message ]
+    split_messages = [ '' ]
+    in_markdown = False
+    markdown_python = False
+    for msg in message.split('\n'):
+        if len(split_messages[-1]) + len(msg) <= 1900:
+            split_messages[-1] += msg+'\n'
+            if "```" in msg:
+                in_markdown = not in_markdown
+                markdown_python = in_markdown and "```py" in msg
+        else:
+            if in_markdown:
+                split_messages[-1] += "```"
+                msg = f"```py\n{msg}" if markdown_python else f"```{msg}"
+            split_messages.append(msg+'\n')
+    MAIN_LOGGER.debug(f"Response was splitted into {len(split_messages)} slices.")
+    return split_messages
 
 
 def process_qwen_response_list(response_list: List[Dict]) -> List[Dict]:
     adjusted_response_list = []
     for response in response_list:
-        if response.get("content"):
-            content: str = response.get("content")
-            content = content.replace("stdout:", '').strip()
+        content: str = response.get("content")
+        if content:
+            # content = content.replace("stdout:", '').strip()
             if response["role"] == "assistant":
                 role = "Bot"
             elif response["role"] == "function":
@@ -177,7 +192,23 @@ def process_qwen_response_list(response_list: List[Dict]) -> List[Dict]:
                 role = ' '.join([ n.capitalize() for n in function_name_split ])
             else:
                 role = response["role"]
-            adjusted_response_list.append((role, content))
+        elif "function_call" in response:
+            role = "Function Call"
+            called_function = response['function_call']['name']
+
+            # Temp
+            if called_function == "code_interpreter":
+                content = f"Called function: {called_function}\n"
+                content += "Arguments: Skipped due to parsing problem."
+
+            else:
+                content = f"Called function: {called_function}\n"
+                # # print('\n\n', response['function_call']['arguments'], '\n\n')
+                # arguments = json.loads(response['function_call']['arguments'])
+                # if len(arguments["content"]) > 30:
+                #     arguments["content"] = arguments["content"][:30] + "..."
+                # content += f"Arguments:\n```{json.dumps(arguments, indent=4)}```"
+        adjusted_response_list.append((role, content))
     return adjusted_response_list
 
 
@@ -230,10 +261,12 @@ class DiscordBot(discord.Client):
             response_list = self.model(dc_msg.content)
             response_list = process_qwen_response_list(response_list)
             for role, content in response_list:
-                msg = await dc_msg.channel.send(f"# {role}:\n{content}")
+                split_messages = split_message(f"# {role}:\n{content}")
+                for message in split_messages:
+                    msg = await dc_msg.channel.send(message)
+                    time.sleep(1)
                 content_pruned = content[:20] + "..." if len(content) > 20 else content
                 MAIN_LOGGER.info(f"Replied: \"{content_pruned}\".")
-                time.sleep(1)
 
 
 
